@@ -1,0 +1,240 @@
+htmlpage FilteredRides(ignore_lat, chosen_event, userLat, userLong, userDestLat, userDestLong, userOriginLocation, userOriginState, userDestState, userDestLocation, Travel_Mode)
+content
+<%{
+	if(input.userLong == null && input.userLat == null && input.ignore_lat != "yes")
+	{
+		%>
+Could not find those locations in Google Maps. Try re-entering the addresses.
+<%
+	}
+	else if((input.userLong != null && input.userLat != null) || input.ignore_lat == "yes")
+	{
+		ridesWithDistance = Map();
+		distances = List:Float();
+		emails = List:String();
+		if(input.ignore_lat != "yes")
+		{
+			userLatFloat = userLat.toDecimal();
+			userLongFloat = userLong.toDecimal();
+			userDestLatFloat = userDestLat.toDecimal();
+			userDestLongFloat = userDestLong.toDecimal();
+		}
+		if(input.chosen_event != null && input.chosen_event != "-Select-")
+		{
+			filteredRides = Rideshare[Event_Prefix == input.chosen_event && Removed == false];
+			for each  ride in filteredRides
+			{
+				if(!emails.contains(ride.Email))
+				{
+					if(input.ignore_lat != "yes")
+					{
+						dist = thisapp.geo.calculateDistance(ride.origin_latitude,ride.origin_longitude,userLatFloat,userLongFloat,ride.ID);
+					}
+					else
+					{
+						dist = ride.ID;
+					}
+					distString = dist + "";
+					//use dist as key because each ride will have unique distance
+					ridesWithDistance.put(distString,"" + ride.ID);
+					distances.add(dist);
+					emails.add(ride.Email);
+				}
+			}
+		}
+		else if(input.chosen_event == null || input.chosen_event == "-Select-")
+		{
+			rides_in_same_state = Rideshare[Arriving_At >= zoho.currentdate && destination_state == input.userDestState && Leaving_From_State == input.userOriginState];
+			for each  test_ride in rides_in_same_state
+			{
+				dist_to_start = thisapp.geo.calculateDistance(test_ride.origin_latitude,test_ride.origin_longitude,userLatFloat,userLongFloat,test_ride.ID);
+				dist_to_end = thisapp.geo.calculateDistance(test_ride.destination_latitude,test_ride.destination_longitude,userDestLatFloat,userDestLongFloat,test_ride.ID);
+				//allow a diversion of 20%
+				//e.g. driver would be willing to drive 5km out of their way for a 25km trip
+				total_ride_dist = thisapp.geo.calculateDistance(test_ride.origin_latitude,test_ride.origin_longitude,test_ride.destination_latitude,test_ride.destination_longitude,test_ride.ID);
+				max_diversion = total_ride_dist * 0.2;
+				if(dist_to_start < max_diversion && dist_to_end < max_diversion && !emails.contains(test_ride.Email))
+				{
+					emails.add(test_ride.Email);
+					ridesWithDistance.put(distString,"" + test_ride.ID);
+					distances.add(dist_to_start);
+				}
+			}
+		}
+		else
+		{
+			%>
+<%=chosen_event%>
+<%
+		}
+		//sort distances in ascending order
+		distances.sort(true);
+		searchLocation = chosen_event;
+		event_prefix = chosen_event;
+		if(chosen_event.contains("Non-Event Ride"))
+		{
+			searchLocation = userDestLocation + " " + userDestState;
+			event_prefix = "*";
+		}
+		%>
+<head>
+<style>
+.datagrid {width: 90%;}
+.datagrid table { border-collapse: collapse; text-align: left; width: 100%; } .datagrid {font: normal 12px/150% Arial, Helvetica, sans-serif; background: #fff; overflow: hidden; border: 1px solid #36752D; -webkit-border-radius: 3px; -moz-border-radius: 3px; border-radius: 3px; }.datagrid table td, .datagrid table th { width: auto; padding: 3px 10px; }.datagrid table thead th {background:-webkit-gradient( linear, op, ottom, color-stop(0.05, #36752D), color-stop(1, #275420) );background:-moz-linear-gradient( center top, #36752D 5%, #275420 100% );filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#36752D', endColorstr='#275420');background-color:#36752D; color:#FFFFFF; font-size: 15px; font-weight: bold; border-left: 1px solid #36752D; } .datagrid table thead th:first-child { border: none; }.datagrid table tbody td { color: #275420; border-left: 1px solid #C6FFC2;font-size: 12px;font-weight: normal; }.datagrid table tbody .alt td { background: #DFFFDE; color: #275420; }.datagrid table tbody td:first-child { border-left: none; }.datagrid table tbody tr:last-child td { border-bottom: none; }.datagrid table tfoot td div { border-top: 1px solid #36752D;background: #DFFFDE;} .datagrid table tfoot td { padding: 0; font-size: 12px } .datagrid table tfoot td div{ padding: 2px; }.datagrid table tfoot td ul { margin: 0; padding:0; list-style: none; text-align: right; }.datagrid table tfoot  li { display: inline; }.datagrid table tfoot li a { text-decoration: none; display: inline-block;  padding: 2px 8px; margin: 1px;color: #FFFFFF;border: 1px solid #36752D;-webkit-border-radius: 3px; -moz-border-radius: 3px; border-radius: 3px; background:-webkit-gradient( linear, op, ottom, color-stop(0.05, #36752D), color-stop(1, #275420) );background:-moz-linear-gradient( center top, #36752D 5%, #275420 100% );filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#36752D', endColorstr='#275420');background-color:#36752D; }.datagrid table tfoot ul.active, .datagrid table tfoot ul a:hover { text-decoration: none;border-color: #275420; color: #FFFFFF; background: none; background-color:#36752D;}
+.name { width: 1%; }
+.comments { width: 1%; }
+
+</style>
+<body>
+<div width="100%" style="background-image: 'http://cocoride.com.au/wordpress/wp-content/uploads/2011/12/spacer.png'; background-repeat: 'repeat-x;'"></div>
+
+<h2>Searching for rides to <%=searchLocation%></h2>
+<div class="datagrid" >
+<table >
+    <thead>
+        <tr>
+            <th scope="col"><span ><span >Get in contact</span></span></th>
+            <th scope="col" class="name"><span ><span >Name</span></span></th>
+            <th scope="col"><span ><span >Distance from you</span></span></th>
+            <th scope="col"><span ><span >Leaving from</span></span></th>           
+            <th scope="col"><span ><span >Arrival time</span></span></th>
+            <th scope="col"><span ><span >Driver or passenger</span></span></th>
+            <th scope="col"><span ><span >Free seats</span></span></th>
+            <th scope="col" class="comments"><span ><span >Comments</span></span></th>
+            <th scope="col"><span ><span >Gender</span></span></th>
+            <th scope="col"><span ><span >ID verified</span></span></th>
+        </tr>
+    </thead>
+    <tbody>
+<%
+		counter = 0;
+		num_distances = distances.size();
+		for each  dist in distances
+		{
+			//using 
+			distString = "Unknown";
+			if(dist == 9999999999 || counter > 12)
+			{
+				//rideID = (dist.toList(":").get(1)).toLong();
+				//ride  =  Rideshare  [ID == rideID];
+			}
+			else
+			{
+				counter = counter + 1;
+				if(input.ignore_lat != "yes")
+				{
+					distString = dist.round(2) + " km";
+				}
+				ride_id = ridesWithDistance.get(dist + "").toLong();
+				//ride  =  Rideshare  [ID == 909597000000456038];
+				ride = Rideshare[ID == ride_id];
+				%>
+<tr>
+            <!--Contact them-->
+            <td width="8%"><span style="font-size: small; "><a href="https://creator.zoho.com/jezcocoride/cocoride/form-mobile/Add_Rideshare/requested_user=<%=ride.ID%>&zcLoadIn=dialog" target="_blank">
+            <span style="font-family: Arial; "><img src="https://writer.zoho.com/image.do?imgurl=74129aaefb3196b345d2fde603d2c64a3646bf0f88b3c0c06af9ae1f6c667de413cb275743774f26c709b536ecef1162" alt="" /><br type="_moz" />
+            </span></a></span></td>
+            
+            <!--Name-->
+            <td width="4%"><span style="font-size: small; "><span style="font-family: Arial; "><br type="_moz" /><%=ride.Name%>
+            </span></span></td>
+            
+            <!--Distance-->
+            <td width="8%"><span style="font-size: small; "><span style="font-family: Arial; "><br type="_moz" /><%=distString%>
+            </span></span></td>
+            
+            <!--Leaving from-->
+            <td><span style="font-size: small; "><span style="font-family: Arial; "><br type="_moz" /><%=ride.Leaving_from%>
+            </span></span></td>
+    
+            <!--Arrival time-->
+            <td><span style="font-size: small; "><span style="font-family: Arial; "><br type="_moz" /><%=ride.Arriving_At%>
+            </span></span></td>
+
+            <!--Driver or passenger-->
+            <td><span style="font-size: small; "><span style="font-family: Arial; ">
+<%
+				if(ride.Driver_or_passenger == "Driver")
+				{
+					%>
+<img src="https://writer.zoho.com/image.do?imgurl=74129aaefb3196b345d2fde603d2c64a3646bf0f88b3c0c06af9ae1f6c667de4bc45edb06e9b07fda09fa5db9b1c0910" alt="" />
+<%
+				}
+				else
+				{
+					%>
+<img src="https://writer.zoho.com/image.do?imgurl=74129aaefb3196b345d2fde603d2c64a3646bf0f88b3c0c06af9ae1f6c667de4350b4516447cb42ccf29ad649a1ab1b1" alt="" />
+<%
+				}
+				%>
+</span></span></td>
+            
+            <!--Num seats-->
+            <td><span style="font-size: small; "><span style="font-family: Arial; "><br type="_moz" /> <%=ride.How_many_seats_do_you_have_for_Drivers_or_need_for_Passengers%>
+            </span></span></td>
+
+            <!--Comments-->
+            <td><span style="font-size: small; "><span style="font-family: Arial; "><br type="_moz" /><%=ride.Any_special_requests%> 
+            </span></span></td>
+
+            <!--Gender-->
+            <td><span style="font-size: small; "><span style="font-family: Arial; "><br type="_moz" />
+<%
+				if(ride.Gender == "Male")
+				{
+					%>
+<img src="https://writer.zoho.com/image.do?imgurl=74129aaefb3196b345d2fde603d2c64a3646bf0f88b3c0c06af9ae1f6c667de43f229a2e6045fad6a84f6243a7f9c3f9"/>
+<%
+				}
+				else if(ride.Gender == "Female")
+				{
+					%>
+<img src="https://writer.zoho.com/image.do?imgurl=74129aaefb3196b345d2fde603d2c64a3646bf0f88b3c0c06af9ae1f6c667de4695281aebb429a02b60c79c66a6affb4" alt="" /><br type="_moz" />
+<%
+				}
+				else
+				{
+					%>
+<img src="https://writer.zoho.com/image.do?imgurl=74129aaefb3196b345d2fde603d2c64a3646bf0f88b3c0c06af9ae1f6c667de4d6cf88a1e778a97484a604230b31ac6e" alt="" /><br type="_moz" />
+<%
+				}
+				%>
+</span></span></td>
+
+            <!--ID verified-->
+            <td><span style="font-size: small; "><span style="font-family: Arial; ">
+<%
+				if(ride.Verified)
+				{
+					%>
+<a target="_blank" href="https://creator.zoho.com/jezcocoride/cocoride/view-embed/ID_Verification_Explanation"><img style="width:70%; height:auto;" src="https://writer.zoho.com/image.do?imgurl=74129aaefb3196b345d2fde603d2c64a3646bf0f88b3c0c06af9ae1f6c667de41d0717b52869dd3667a272c24300d6cc" alt="Verified" /></a>
+<%
+				}
+				else
+				{
+					%>
+<a target="_blank" href="https://creator.zoho.com/jezcocoride/cocoride/view-embed/ID_Verification_Explanation"><img style="width:70%; height:auto;" src="https://writer.zoho.com/image.do?imgurl=74129aaefb3196b345d2fde603d2c64a3646bf0f88b3c0c06af9ae1f6c667de410c947903418c937bc7fbcfeca99758a" alt="Unverified" /></a>
+<%
+				}
+				%>
+</span></span></td>
+        </tr>
+<%
+			}
+		}
+		%>
+</tbody>
+</table>
+</div>
+<%
+	}
+	if(counter == 0)
+	{
+		%>
+<h3>No rides found:</h3> 
+				
+		<h3><a style="color:blue;" href="https://creator.zoho.com/jezcocoride/cocoride/form-embed/Rideshare/zc_LoadIn=dialog&travel_mode=<%=Travel_Mode%>&Event_Prefix=<%=event_prefix%>&Event=<%=chosen_event%>&Referrer=https://creator.zoho.com/jezcocoride/cocoride/view-embed/Search_For_Rides/zc_Analytics_Id=UA-41384248-1&Leaving_from=<%=userOriginLocation%>&Leaving_From_State=<%=userOriginState%>&Destination=<%=userDestLocation%>&destination_state=<%=userDestState%>&origin_latitude=<%=userLat%>&origin_longitude=<%=userLong%>&destination_latitude=<%=userDestLat%>&destination_longitude=<%=userDestLong%>">Be the first to register a ride. </a></h3>
+<%
+	}
+
+}%>
